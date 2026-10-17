@@ -76,13 +76,21 @@ class ModelClient:
         config.update(overrides)
         return cls(api_key=api_key, **config)
 
-    def complete(self, messages: list[Message], temperature: float = 0.7) -> Reply:
-        """Send a conversation, return the model's next message."""
-        body = json.dumps({
+    def complete(self, messages: list[Message], temperature: float = 0.7,
+                 json_mode: bool = False) -> Reply:
+        """Send a conversation, return the model's next message.
+
+        json_mode asks the server to guarantee the reply is valid JSON. The
+        prompt itself must still mention JSON and describe the shape wanted.
+        """
+        payload = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-        }).encode("utf-8")
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        body = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

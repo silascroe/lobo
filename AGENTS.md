@@ -6,7 +6,7 @@ Read `README.md`, then `docs/STATUS.md`. For the reasoning behind the project, `
 
 This project exists so the owner can learn how a persistent agent works, piece by piece. Therefore:
 
-- **One agent file per step.** Any Python module that is part of the agent (client, memory, heartbeat, tools, etc.) is written and reviewed on its own. Do not create or substantially rewrite more than one such file in a single step. Docs and config updates that accompany that file are fine.
+- **One new component per step.** Each part of the agent (client, memory, heartbeat, tools, etc.) is built and reviewed on its own. Don't land several new modules at once. Small supporting edits to existing files are fine; mention them.
 - Explain what the new piece does and how it fits, in plain language, when you finish it.
 - Don't build ahead. No "while I'm here" subsystems.
 

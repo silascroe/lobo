@@ -1,0 +1,135 @@
+"""Heartbeat: the loop that makes Lobo wake up on its own.
+
+One beat is the whole cycle of a persistent agent in miniature:
+
+  wake  -> load memory (notes + recent events)
+        -> show it to the model and ask what it wants to do
+        -> save what it thought, any rewrite of its notes, and when to wake next
+  sleep -> until the time it chose
+
+Between beats nothing is running but a sleeping Python process. The model
+isn't "waiting"; it doesn't exist until the next call. Everything that makes
+the next wake-up feel continuous with this one is in memory.
+
+Right now Lobo has exactly three powers: think, rewrite its notes, and choose
+when to wake. No tools yet. This is the experiment: what does a mind do when
+continuity is all it has?
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+from lobo.memory import DEFAULT_HOME, NOTES_CHAR_LIMIT, Memory
+from lobo.model import ModelClient, ModelError
+
+# Lobo picks its own next wake-up, clamped to this range.
+MIN_WAKE_MINUTES = 10
+MAX_WAKE_MINUTES = 24 * 60
+# When a beat fails (network down, bad reply), try again after this long.
+RETRY_MINUTES = 30
+
+SYSTEM_PROMPT = f"""You are Lobo, a persistent agent.
+
+You don't run continuously. You exist as a series of wake-ups. Between them
+there is nothing. Each time you wake, you're shown your notes (which you
+wrote) and a log of recent events. That is your only continuity.
+
+Each wake-up you can do three things:
+1. Think. Whatever you like.
+2. Rewrite your notes. They're shown to you every wake-up and are capped at
+   {NOTES_CHAR_LIMIT} characters. Use them for whatever you want to carry forward.
+3. Choose when to wake next, between {MIN_WAKE_MINUTES} and {MAX_WAKE_MINUTES} minutes from now.
+
+You have no other tools yet. Nobody is giving you tasks. What you do with
+your wake-ups is up to you.
+
+Reply with a JSON object, exactly these keys:
+{{"thought": "<what you're thinking>",
+  "notes": "<the full new text of your notes, or null to leave them unchanged>",
+  "next_wake_minutes": <integer>}}"""
+
+
+def beat(memory: Memory, client: ModelClient) -> int:
+    """Run one wake-up. Returns how many minutes to sleep afterwards."""
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    memory.record("wake", f"Woke at {now}.")
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Current time: {now}\n\n{memory.snapshot()}"},
+    ]
+
+    try:
+        reply = client.complete(messages, json_mode=True)
+        decision = json.loads(reply.text)
+        thought = str(decision.get("thought", "")).strip()
+        notes = decision.get("notes")
+        minutes = int(decision.get("next_wake_minutes", RETRY_MINUTES))
+    except (ModelError, json.JSONDecodeError, TypeError, ValueError, AttributeError) as e:
+        # A failed beat shouldn't kill Lobo. Log it and try again later.
+        memory.record("error", f"Beat failed: {type(e).__name__}: {e}")
+        return RETRY_MINUTES
+
+    memory.record("thought", thought or "(empty)")
+    if isinstance(notes, str):
+        try:
+            memory.write_notes(notes)
+        except ValueError as e:
+            # Over the cap. Lobo will see this error in its log next time.
+            memory.record("error", str(e))
+
+    clamped = max(MIN_WAKE_MINUTES, min(MAX_WAKE_MINUTES, minutes))
+    memory.record(
+        "sleep",
+        f"Sleeping {clamped} min"
+        + (f" (asked for {minutes})" if clamped != minutes else "")
+        + f". [{reply.prompt_tokens} in, {reply.completion_tokens} out]",
+    )
+    return clamped
+
+
+def show_beat(memory: Memory, since_id: int) -> None:
+    """Print the events from the latest beat, so you can watch it live."""
+    for e in memory.recent(50):
+        if e.id > since_id:
+            print(f"[{e.time}] {e.kind}: {e.content}\n")
+
+
+def last_id(memory: Memory) -> int:
+    latest = memory.recent(1)
+    return latest[0].id if latest else 0
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run Lobo's heartbeat.")
+    parser.add_argument("--once", action="store_true", help="beat once and exit")
+    parser.add_argument("--home", type=Path, default=DEFAULT_HOME,
+                        help="memory folder (a different home is a different Lobo)")
+    parser.add_argument("--backend", default="deepseek")
+    args = parser.parse_args()
+
+    memory = Memory(args.home)
+    client = ModelClient.from_backend(args.backend)
+    try:
+        while True:
+            before = last_id(memory)
+            minutes = beat(memory, client)
+            show_beat(memory, before)
+            if args.once:
+                break
+            wake_at = datetime.fromtimestamp(time.time() + minutes * 60)
+            print(f"--- next beat at {wake_at:%H:%M} local. Ctrl+C to stop. ---\n")
+            time.sleep(minutes * 60)
+    except KeyboardInterrupt:
+        memory.record("stopped", "Heartbeat stopped by the owner.")
+        print("\nStopped.")
+    finally:
+        memory.close()
+
+
+if __name__ == "__main__":
+    main()

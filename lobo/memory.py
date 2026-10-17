@@ -104,7 +104,8 @@ class Memory:
                 "Condense them first."
             )
         self.notes_path.write_text(text, encoding="utf-8")
-        self.record("notes", f"Rewrote notes ({len(text)} chars).")
+        # Keep the full text in the log too, so every past version survives.
+        self.record("notes", f"Rewrote notes ({len(text)} chars).\n{text}")
 
     # --- what the model gets to see ----------------------------------------
 
@@ -112,7 +113,13 @@ class Memory:
         """Notes plus recent events, formatted as text for a prompt."""
         notes = self.read_notes().strip() or "(no notes yet)"
         events = self.recent(recent_limit)
-        log = "\n".join(f"[{e.time}] {e.kind}: {e.content}" for e in events)
+        # Old notes versions are kept in the log for history, but the model
+        # only sees their one-line header; the current notes are shown above.
+        log = "\n".join(
+            f"[{e.time}] {e.kind}: "
+            + (e.content.splitlines()[0] if e.kind == "notes" else e.content)
+            for e in events
+        )
         return f"## Your notes\n{notes}\n\n## Recent events\n{log or '(nothing yet)'}"
 
     def close(self) -> None:

@@ -12,7 +12,7 @@ It is not a personal assistant and not an attempt to compete with OpenClaw, Herm
 Your PC: Lobo runtime (Python)
   ├─ model client   → DeepSeek API now; any OpenAI-compatible backend later (e.g. local llama.cpp/Ollama)
   ├─ memory         → home/notes.md (curated) + home/memory.db (raw event log)
-  ├─ heartbeat      → wake, read state, decide, act, save     (not built yet)
+  ├─ heartbeat      → wake, show memory, model decides, save, sleep until it chose
   ├─ tools          → workspace-only file ops first           (not built yet)
   └─ workspace/     → the only part of the disk Lobo may touch (not built yet)
 ```
@@ -39,6 +39,7 @@ setx DEEPSEEK_API_KEY "sk-..."
 
 ## Entry points
 
+- `python -m lobo.heartbeat` — run Lobo. Stays open in the terminal, printing each wake-up; Ctrl+C stops it. `--once` for a single beat.
 - `python -m lobo.model "prompt"` — send one prompt through the model client and print the reply plus token usage.
 - `python -m lobo.memory` — print what Lobo would see of its memory. `python -m lobo.memory search <text>` searches the full log.
 
