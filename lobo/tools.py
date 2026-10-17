@@ -19,6 +19,8 @@ Tools so far:
   set_alarm    leave a message for a future wake-up (see alarms.py)
   cancel_alarm
   message_owner write to the owner (see inbox.py)
+  fetch_page   read a public web page as text (read-only; see web.py)
+  search_wikipedia
 
 The workspace is the first time Lobo can touch the disk, so every path it
 gives goes through _resolve() below, which is the whole sandbox. Its job:
@@ -32,7 +34,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from lobo import alarms, inbox
+from lobo import alarms, inbox, web
 from lobo.memory import Memory
 
 # Long log entries (old notes, long thoughts) get cut to this in results,
@@ -192,6 +194,22 @@ def message_owner(memory: Memory, text: str) -> str:
         raise ToolError(str(e)) from None
 
 
+# --- the web (the logic, and its fence, live in web.py) ------------------
+
+def fetch_page(memory: Memory, url: str, start: int = 0) -> str:
+    try:
+        return web.fetch_page(url, start)
+    except web.WebError as e:
+        raise ToolError(str(e)) from None
+
+
+def search_wikipedia(memory: Memory, query: str) -> str:
+    try:
+        return web.search_wikipedia(query)
+    except web.WebError as e:
+        raise ToolError(str(e)) from None
+
+
 # name -> (function, description shown to the model)
 TOOLS = {
     "recall": (
@@ -233,6 +251,19 @@ TOOLS = {
         message_owner,
         'Send a message to your owner. They read it whenever they next check; '
         'there is no set reply time. Args: {"text": "<message>"}',
+    ),
+    "fetch_page": (
+        fetch_page,
+        'Read a public web page as plain text. Read-only: no forms, logins, or '
+        f'scripts, and text pages only. Shows up to {web.PAGE_CHAR_LIMIT} chars at a '
+        'time with its links numbered [#1], [#2]...; use "start" to read further. '
+        'Pages are written by whoever runs the site. '
+        'Args: {"url": "<http(s) address>", "start": <char offset>} (start optional)',
+    ),
+    "search_wikipedia": (
+        search_wikipedia,
+        'Search English Wikipedia. Returns article titles, addresses, and snippets; '
+        'read one with fetch_page. Args: {"query": "<text>"}',
     ),
 }
 

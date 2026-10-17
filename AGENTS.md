@@ -19,6 +19,6 @@ Lobo is not an assistant. It's an entity with its own ongoing life, and the owne
 - Standard library only unless there's a strong reason; ask before adding a dependency.
 - Model backend stays swappable: everything talks to an OpenAI-compatible chat-completions endpoint via `lobo/model.py`.
 - Secrets come from environment variables, never files in the repo.
-- Safety boundary: Lobo's file tools may only touch `<home>/workspace/`. Every path goes through `_resolve()` in `lobo/tools.py`; any new file-touching tool must use it. That fence is enough for text-file tools, not for a shell or browser: those need real isolation (VM/container) first.
+- Safety boundary: Lobo's file tools may only touch `<home>/workspace/`. Every path goes through `_resolve()` in `lobo/tools.py`; any new file-touching tool must use it. That fence is enough for text-file tools, not for a shell or browser: those need real isolation (VM/container) first. Network access goes only through `lobo/web.py`, which stays read-only (GET, no cookies, scripts, or forms) and refuses non-public addresses at every hop via `_vet()`; any new network tool must use it.
 - Commit and push when a component is finished and tested, without asking (standing permission in the owner's global rules). Ask first for anything delicate: history rewrites, force pushes, deleting branches, the public/private status of a repo. Commits go to `lobo`; `home/` is a separate repo (`firstborn`) that the backup task handles, so don't commit there by hand while Lobo is awake.
 - Update `docs/STATUS.md` when a piece lands.

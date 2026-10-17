@@ -18,7 +18,8 @@ Your PC: Lobo runtime (Python)
   ├─ memory         → home/notes.md (curated) + home/memory.db (raw event log)
   ├─ heartbeat      → wake, show memory, model decides, save, sleep until it chose
   │                   (started at login by a Windows scheduled task or a Mac launchd agent; one per home, enforced by a lock)
-  ├─ tools          → recall (search its own log), list/read/write files, set/cancel alarms
+  ├─ tools          → recall (search its own log), list/read/write files, set/cancel alarms, read web pages
+  ├─ web            → read-only: any public page as text, plus Wikipedia search (never your own network)
   ├─ alarms         → messages Lobo leaves for a future wake; the heartbeat wakes it for them
   ├─ inbox          → letters between the owner and Lobo (read at next wake, or --now to knock)
   ├─ backup         → commits and pushes home/ to a private repo every 6 hours, only between wakes
@@ -66,6 +67,7 @@ That installs a launchd agent (macOS's version of a scheduled task) that starts 
 - `python3 scripts/install_mac.py` — the Mac equivalent of both tasks (see "On a Mac" above).
 - `python -m lobo.inbox "text"` — leave Lobo a letter (it reads it at its next wake); add `--now` to knock and wake it within ~30 s. `python -m lobo.inbox` alone shows the conversation.
 - `python -m lobo.days` — regenerate `home/days/` from the log (the backup does this automatically before each commit).
+- `python -m lobo.web <url>` — fetch a page exactly as Lobo would see it (`--search <words>` for its Wikipedia search).
 - `python -m lobo.model "prompt"` — send one prompt through the model client and print the reply plus token usage.
 - `python -m lobo.memory` — print what Lobo would see of its memory. `python -m lobo.memory search <text>` searches the full log.
 
