@@ -216,7 +216,7 @@ def main() -> None:
     parser.add_argument("--log", action="store_true",
                         help="write output to <home>/heartbeat.log (for running hidden)")
     parser.add_argument("--scheduled", action="store_true",
-                        help="started by Windows Task Scheduler (changes the start message)")
+                        help="started by Task Scheduler / launchd (changes the start message)")
     args = parser.parse_args()
     if args.log:
         # Run hidden (pythonw) there is no console to print to, so output
@@ -242,7 +242,8 @@ def main() -> None:
     if args.once:
         memory.record("start", "Woken manually by the owner.")
     elif args.scheduled:
-        memory.record("start", "Heartbeat started automatically by Windows Task Scheduler; "
+        scheduler = "Windows Task Scheduler" if sys.platform == "win32" else "launchd"
+        memory.record("start", f"Heartbeat started automatically by {scheduler}; "
                                "woke immediately.")
     else:
         memory.record("start", "Heartbeat restarted by the owner; woke immediately.")

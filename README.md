@@ -2,6 +2,8 @@
 
 An experimental persistent autonomous agent, built by hand one subsystem at a time.
 
+**Just want to run one on a Mac?** Follow [docs/INSTALL-mac.md](docs/INSTALL-mac.md); no programming needed.
+
 Lobo is a sibling to Lobotomite (`../LLMTesting`). Lobotomite asks how much a small model can *do* inside a good harness. Lobo asks how much of an *agent* — memory, continuity, initiative — you can build around a model, and how much of the result belongs to the model versus the runtime around it.
 
 It is not a personal assistant and not an attempt to compete with OpenClaw, Hermes, or Muse. The point is to understand how that kind of software works by building a small version of it.
@@ -15,7 +17,7 @@ Your PC: Lobo runtime (Python)
   ├─ model client   → DeepSeek API now; any OpenAI-compatible backend later (e.g. local llama.cpp/Ollama)
   ├─ memory         → home/notes.md (curated) + home/memory.db (raw event log)
   ├─ heartbeat      → wake, show memory, model decides, save, sleep until it chose
-  │                   (started at login by a Windows scheduled task; one per home, enforced by a lock)
+  │                   (started at login by a Windows scheduled task or a Mac launchd agent; one per home, enforced by a lock)
   ├─ tools          → recall (search its own log), list/read/write files, set/cancel alarms
   ├─ alarms         → messages Lobo leaves for a future wake; the heartbeat wakes it for them
   ├─ inbox          → letters between the owner and Lobo (read at next wake, or --now to knock)
@@ -44,11 +46,24 @@ setx DEEPSEEK_API_KEY "sk-..."
 
 `setx` only affects *new* terminals, so open a fresh one afterwards.
 
+### On a Mac
+
+Written for macOS but not yet tested on a real Mac; [docs/INSTALL-mac.md](docs/INSTALL-mac.md) is the step-by-step version. The Python that comes with macOS is too old (3.9); install 3.11+ from python.org (then run its "Install Certificates" step, or HTTPS calls fail) or with `brew install python`. Keep the repo out of Desktop/Documents/Downloads, which macOS walls off from background programs. Then, from the repo root in Terminal:
+
+```bash
+export DEEPSEEK_API_KEY="sk-..."
+python3 -m lobo.model "Say hi in five words."
+python3 scripts/install_mac.py
+```
+
+That installs a launchd agent (macOS's version of a scheduled task) that starts Lobo at login and restarts it if it crashes. Because launchd doesn't read your shell settings, the installer copies the key into the agent's file in `~/Library/LaunchAgents` (readable only by you); rerun the installer if the key changes. `--dry-run` shows what it would write, `--remove` uninstalls, `--with-backup` also installs the 6-hourly backup (needs `home/` to be its own Git repo with a remote, and `launchd.log` in `home/.gitignore`). Everywhere this README says `python`, use `python3`.
+
 ## Entry points
 
 - `python -m lobo.heartbeat` — run Lobo. Stays open in the terminal, printing each wake-up; Ctrl+C stops it. `--once` for a single beat. Only one heartbeat can run per home; a second one exits immediately.
 - `.\scripts\install-task.ps1` — run Lobo unattended: registers a Windows scheduled task ("Lobo heartbeat") that starts at login, hidden, logging to `home/heartbeat.log`. `-Remove` uninstalls it. Start/stop it with `Start-ScheduledTask` / `Stop-ScheduledTask "Lobo heartbeat"`.
 - `.\scripts\install-backup-task.ps1` — registers the "Lobo backup" scheduled task (every 6 hours; `-EveryHours N` to change, `-Remove` to uninstall). `python -m lobo.backup` does one backup by hand. Needs `home/` to be its own Git repo with a remote; see [docs/STATUS.md](docs/STATUS.md).
+- `python3 scripts/install_mac.py` — the Mac equivalent of both tasks (see "On a Mac" above).
 - `python -m lobo.inbox "text"` — leave Lobo a letter (it reads it at its next wake); add `--now` to knock and wake it within ~30 s. `python -m lobo.inbox` alone shows the conversation.
 - `python -m lobo.days` — regenerate `home/days/` from the log (the backup does this automatically before each commit).
 - `python -m lobo.model "prompt"` — send one prompt through the model client and print the reply plus token usage.
