@@ -268,8 +268,9 @@ class _TextExtractor(HTMLParser):
             "meta", "source", "track", "wbr"}
     # Elements also skipped, whatever their tag: hidden ones, and a few classes
     # that are pure page furniture on Wikipedia ("[edit]" links, giant
-    # navigation boxes, print-hidden extras).
-    JUNK_CLASSES = {"mw-editsection", "navbox", "noprint", "mw-jump-link"}
+    # navigation boxes, "Part of a series on..." sidebars, maintenance banners,
+    # print-hidden extras).
+    JUNK_CLASSES = {"mw-editsection", "navbox", "sidebar", "ambox", "noprint", "mw-jump-link"}
 
     def __init__(self, base_url: str, only_main: bool = False):
         super().__init__(convert_charrefs=True)
