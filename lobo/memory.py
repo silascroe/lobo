@@ -30,6 +30,10 @@ DEFAULT_HOME = Path(__file__).resolve().parent.parent / "home"
 # and a cap forces Lobo to decide what's worth keeping.
 NOTES_CHAR_LIMIT = 2400
 
+# Event kinds whose full text is too long for the page; snapshot() shows only
+# their first line.
+HEADER_ONLY_KINDS = ("notes", "tool", "reasoning")
+
 
 @dataclass
 class Event:
@@ -115,12 +119,12 @@ class Memory:
         """Notes plus recent events, formatted as text for a prompt."""
         notes = self.read_notes().strip() or "(no notes yet)"
         events = self.recent(recent_limit)
-        # Old notes versions and tool results are kept in full in the log,
-        # but the model only sees their one-line header here, so the page
-        # stays small. (The full text is still reachable by searching.)
+        # Old notes versions, tool results, and private reasoning are kept in
+        # full in the log, but the model only sees their one-line header here,
+        # so the page stays small. (The full text is still searchable.)
         log = "\n".join(
             f"[{e.time}] {e.kind}: "
-            + (e.content.splitlines()[0] if e.kind in ("notes", "tool") else e.content)
+            + (e.content.splitlines()[0] if e.kind in HEADER_ONLY_KINDS else e.content)
             for e in events
         )
         return f"## Your notes\n{notes}\n\n## Recent events\n{log or '(nothing yet)'}"

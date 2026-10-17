@@ -81,6 +81,11 @@ def beat(memory: Memory, client: ModelClient) -> int:
             reply = client.complete(messages, json_mode=True)
             tokens_in += reply.prompt_tokens
             tokens_out += reply.completion_tokens
+            if reply.reasoning:
+                # The model's private reasoning, before it wrote its answer.
+                # Kept for you to read; Lobo's page only shows the header.
+                memory.record("reasoning",
+                              f"Reasoned ({len(reply.reasoning)} chars).\n{reply.reasoning}")
             decision = json.loads(reply.text)
             memory.record("thought", str(decision.get("thought", "")).strip() or "(empty)")
 
@@ -102,6 +107,11 @@ def beat(memory: Memory, client: ModelClient) -> int:
             raise ValueError("kept requesting tools past the limit")
 
         notes = decision.get("notes")
+        if "next_wake_minutes" not in decision:
+            # Don't paper over this silently: Lobo should see that its final
+            # answer was missing a piece, and you should too.
+            memory.record("error", "Final reply had no next_wake_minutes; "
+                          f"defaulted to {RETRY_MINUTES}. Reply was: {reply.text[:500]}")
         minutes = int(decision.get("next_wake_minutes", RETRY_MINUTES))
     except (ModelError, json.JSONDecodeError, TypeError, ValueError, AttributeError) as e:
         # A failed beat shouldn't kill Lobo. Log it and try again later.
@@ -147,6 +157,12 @@ def main() -> None:
 
     memory = Memory(args.home)
     client = ModelClient.from_backend(args.backend)
+    # Starting the heartbeat wakes Lobo right away, whatever time it chose.
+    # Say so in its log, as a plain fact, and let it draw its own conclusions.
+    if args.once:
+        memory.record("start", "Woken manually by the owner.")
+    else:
+        memory.record("start", "Heartbeat restarted by the owner; woke immediately.")
     try:
         while True:
             before = last_id(memory)

@@ -28,7 +28,8 @@ Message = dict[str, str]
 BACKENDS = {
     "deepseek": {
         "base_url": "https://api.deepseek.com",
-        "model": "deepseek-chat",
+        # DeepSeek-V4.1-Flash. Thinking mode is on by default.
+        "model": "deepseek-flash",
         "api_key_env": "DEEPSEEK_API_KEY",
     },
     "local": {
@@ -52,6 +53,9 @@ class Reply:
     model: str
     prompt_tokens: int
     completion_tokens: int
+    # Thinking models (DeepSeek in thinking mode) reason before answering and
+    # return that reasoning separately from the answer. Empty if there's none.
+    reasoning: str = ""
 
 
 class ModelClient:
@@ -98,7 +102,8 @@ class ModelClient:
         data = self._post_with_retries(f"{self.base_url}/chat/completions", body, headers)
 
         try:
-            text = data["choices"][0]["message"]["content"]
+            message = data["choices"][0]["message"]
+            text = message["content"]
         except (KeyError, IndexError, TypeError):
             raise ModelError(f"Unexpected response shape: {str(data)[:300]}")
         usage = data.get("usage") or {}
@@ -107,6 +112,7 @@ class ModelClient:
             model=data.get("model", self.model),
             prompt_tokens=usage.get("prompt_tokens", 0),
             completion_tokens=usage.get("completion_tokens", 0),
+            reasoning=message.get("reasoning_content") or "",
         )
 
     def _post_with_retries(self, url: str, body: bytes, headers: dict) -> dict:
