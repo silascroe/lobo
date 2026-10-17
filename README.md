@@ -6,6 +6,8 @@ Lobo is a sibling to Lobotomite (`../LLMTesting`). Lobotomite asks how much a sm
 
 It is not a personal assistant and not an attempt to compete with OpenClaw, Hermes, or Muse. The point is to understand how that kind of software works by building a small version of it.
 
+The stance that sets it apart: those tools are persistent agents built to *serve* their owner. Lobo is a persistent agent built to *have its own life*. Nobody gives it tasks, and the owner is mostly an observer, closer to weather than to a boss. The interesting output is what it does with its existence, not what it does for anyone. Features get chosen accordingly: things that widen its own world and self-direction (tools, skills, its own projects) come before conveniences for the owner (inbox, integrations, errands).
+
 ## The shape of it
 
 ```

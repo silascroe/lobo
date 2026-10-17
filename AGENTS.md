@@ -10,6 +10,10 @@ This project exists so the owner can learn how a persistent agent works, piece b
 - Explain what the new piece does and how it fits, in plain language, when you finish it.
 - Don't build ahead. No "while I'm here" subsystems.
 
+## What Lobo is for
+
+Lobo is not an assistant. It's an entity with its own ongoing life, and the owner mostly watches. When choosing or designing a feature, ask what it does for Lobo's world, not what it does for the owner. Don't steer Lobo toward being useful, don't explain its environment to it beyond plain facts, and let it draw its own conclusions.
+
 ## Conventions
 
 - Standard library only unless there's a strong reason; ask before adding a dependency.
