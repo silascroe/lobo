@@ -3,7 +3,8 @@ __pycache__/
 .venv/
 .env
 
-# Lobo's own world: its memory database and workspace are runtime state, not source.
+# Lobo's own world: its memory (home/) and workspace are runtime state, not source.
+home/
 workspace/
 *.sqlite3
 *.db

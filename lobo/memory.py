@@ -1,0 +1,130 @@
+"""Memory: what Lobo keeps between wake-ups.
+
+The model forgets everything the instant a call ends. Continuity has to live
+on disk. Lobo splits it into two layers, the same split Hermes and OpenClaw
+use:
+
+  notes.md     Curated, small, human-readable. Lobo's own summary of what
+               matters: who it is, what it's working on, what it learned.
+               Shown to the model on every wake-up, so it has a size cap.
+
+  memory.db    The raw log. Every event (woke up, thought something, did
+               something) appended in order, forever. Too big to show the
+               model in full; instead it gets the most recent few, and can
+               search the rest.
+
+Notes are the diary you reread each morning. The log is the box of receipts.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+import sys
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+DEFAULT_HOME = Path(__file__).resolve().parent.parent / "home"
+
+# Roughly 600 tokens. Small on purpose: these get paid for on every wake-up,
+# and a cap forces Lobo to decide what's worth keeping.
+NOTES_CHAR_LIMIT = 2400
+
+
+@dataclass
+class Event:
+    id: int
+    time: str   # ISO 8601, UTC
+    kind: str   # free-form label: "wake", "thought", "action", "error", ...
+    content: str
+
+
+class Memory:
+    def __init__(self, home: Path = DEFAULT_HOME):
+        self.home = Path(home)
+        self.home.mkdir(parents=True, exist_ok=True)
+        self.notes_path = self.home / "notes.md"
+        self.db = sqlite3.connect(self.home / "memory.db")
+        # CREATE TABLE IF NOT EXISTS makes this safe to run on every start:
+        # the first run creates the table, later runs find it already there.
+        self.db.execute("""
+            CREATE TABLE IF NOT EXISTS events (
+                id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                time    TEXT NOT NULL,
+                kind    TEXT NOT NULL,
+                content TEXT NOT NULL
+            )
+        """)
+        self.db.commit()
+
+    # --- the raw log -------------------------------------------------------
+
+    def record(self, kind: str, content: str) -> Event:
+        """Append one event to the log. Events are never edited or deleted."""
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        # The ? placeholders let sqlite insert the values safely, so text
+        # containing quotes or SQL can't break (or hijack) the query.
+        cursor = self.db.execute(
+            "INSERT INTO events (time, kind, content) VALUES (?, ?, ?)",
+            (now, kind, content),
+        )
+        self.db.commit()
+        return Event(cursor.lastrowid, now, kind, content)
+
+    def recent(self, limit: int = 20) -> list[Event]:
+        """The last `limit` events, oldest first (the order they happened)."""
+        rows = self.db.execute(
+            "SELECT id, time, kind, content FROM events ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [Event(*row) for row in reversed(rows)]
+
+    def search(self, text: str, limit: int = 20) -> list[Event]:
+        """Events whose content contains `text` (case-insensitive), newest first."""
+        rows = self.db.execute(
+            "SELECT id, time, kind, content FROM events "
+            "WHERE content LIKE ? ORDER BY id DESC LIMIT ?",
+            (f"%{text}%", limit),
+        ).fetchall()
+        return [Event(*row) for row in rows]
+
+    # --- the curated notes -------------------------------------------------
+
+    def read_notes(self) -> str:
+        if not self.notes_path.exists():
+            return ""
+        return self.notes_path.read_text(encoding="utf-8")
+
+    def write_notes(self, text: str) -> None:
+        """Replace the notes entirely. Over the cap is refused, not trimmed:
+        silently cutting Lobo's notes would lose whatever was at the end."""
+        if len(text) > NOTES_CHAR_LIMIT:
+            raise ValueError(
+                f"Notes are {len(text)} chars; the limit is {NOTES_CHAR_LIMIT}. "
+                "Condense them first."
+            )
+        self.notes_path.write_text(text, encoding="utf-8")
+        self.record("notes", f"Rewrote notes ({len(text)} chars).")
+
+    # --- what the model gets to see ----------------------------------------
+
+    def snapshot(self, recent_limit: int = 20) -> str:
+        """Notes plus recent events, formatted as text for a prompt."""
+        notes = self.read_notes().strip() or "(no notes yet)"
+        events = self.recent(recent_limit)
+        log = "\n".join(f"[{e.time}] {e.kind}: {e.content}" for e in events)
+        return f"## Your notes\n{notes}\n\n## Recent events\n{log or '(nothing yet)'}"
+
+    def close(self) -> None:
+        self.db.close()
+
+
+if __name__ == "__main__":
+    # Peek at Lobo's memory: python -m lobo.memory   (or: ... search <text>)
+    memory = Memory()
+    if sys.argv[1:2] == ["search"]:
+        for e in memory.search(" ".join(sys.argv[2:])):
+            print(f"[{e.time}] {e.kind}: {e.content}")
+    else:
+        print(memory.snapshot())
+    memory.close()
