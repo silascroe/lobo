@@ -43,7 +43,7 @@ RESULT_CHAR_LIMIT = 500
 # from being enormous, and the folder as a whole from filling the disk.
 READ_CHAR_LIMIT = 8_000
 WRITE_CHAR_LIMIT = 50_000
-WORKSPACE_BYTE_LIMIT = 10 * 1024 * 1024
+WORKSPACE_BYTE_LIMIT = 1024 * 1024 * 1024  # 1 GB
 LIST_ENTRY_LIMIT = 200
 
 
