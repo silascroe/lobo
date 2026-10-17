@@ -12,7 +12,7 @@ This project exists so the owner can learn how a persistent agent works, piece b
 
 ## What Lobo is for
 
-Lobo is not an assistant. It's an entity with its own ongoing life, and the owner mostly watches. When choosing or designing a feature, ask what it does for Lobo's world, not what it does for the owner. Don't steer Lobo toward being useful, don't explain its environment to it beyond plain facts, and let it draw its own conclusions.
+Lobo is not an assistant. It's an entity with its own ongoing life, and the owner mostly watches. When choosing or designing a feature, ask what it does for Lobo's world, not what it does for the owner. Don't steer Lobo toward being useful, don't explain its environment to it beyond plain facts, and let it draw its own conclusions. When relaying for the owner (`python -m lobo.inbox`), send their words verbatim, and never message Lobo in the owner's name on your own.
 
 ## Conventions
 

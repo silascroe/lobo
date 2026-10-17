@@ -25,7 +25,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lobo import alarms, tools
+from lobo import alarms, inbox, tools
 from lobo.memory import DEFAULT_HOME, NOTES_CHAR_LIMIT, Memory
 from lobo.model import ModelClient, ModelError
 
@@ -58,6 +58,7 @@ Each wake-up you can:
 4. Choose when to wake next, between {MIN_WAKE_MINUTES} and {MAX_WAKE_MINUTES} minutes from now.
 
 Nobody is giving you tasks. What you do with your wake-ups is up to you.
+Your owner may sometimes send you a message; it appears in your log.
 
 Reply with a JSON object. To use a tool:
 {{"thought": "<what you're thinking>", "tool": "<tool name>", "args": {{...}}}}
@@ -76,6 +77,8 @@ def beat(memory: Memory, client: ModelClient) -> int:
     # Any alarm that's due rings now: logged as an event, so it shows up in
     # the recent events below like everything else that happened.
     alarms.ring_due(memory)
+    # Same for letters from the owner waiting in the mailbox.
+    inbox.deliver(memory)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"Current time: {now}\n\n{memory.snapshot()}\n\n"
@@ -176,16 +179,20 @@ def acquire_lock(home: Path):
     return f
 
 
-def sleep_until(wake_at: float) -> None:
+def sleep_until(wake_at: float, interrupt=None) -> bool:
     """Sleep until a wall-clock time, in short chunks, checking the clock.
 
     One long time.sleep can drift when the PC itself goes to sleep. Checking
     the real time between short sleeps means that when the PC wakes up and
     Lobo's time has passed, Lobo wakes right away instead of finishing a
-    stale countdown.
+    stale countdown. Between chunks it also asks `interrupt()` (a knock on
+    the door); if that says yes, it stops early. Returns True if interrupted.
     """
     while (remaining := wake_at - time.time()) > 0:
+        if interrupt and interrupt():
+            return True
         time.sleep(min(remaining, 30))
+    return False
 
 
 def show_beat(memory: Memory, since_id: int) -> None:
@@ -254,7 +261,8 @@ def main() -> None:
                 wake_at, why = alarm_at, " (for an alarm)"
             print(f"--- next beat at {datetime.fromtimestamp(wake_at):%H:%M} local{why}. "
                   "Ctrl+C to stop. ---\n")
-            sleep_until(wake_at)
+            if sleep_until(wake_at, interrupt=lambda: inbox.knocked(memory)):
+                print("--- knock: the owner sent a message; waking early. ---\n")
     except KeyboardInterrupt:
         memory.record("stopped", "Heartbeat stopped by the owner.")
         print("\nStopped.")

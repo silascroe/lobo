@@ -66,6 +66,9 @@ def render_event(kind: str, content: str) -> str:
         return f"**{esc(first)}**\n\n" + fold("The new notes", rest)
     if kind == "sleep":
         return f"**{esc(content)}**\n"
+    if kind == "message":
+        quoted = "\n".join(f"> {esc(line)}" if line else ">" for line in rest.splitlines())
+        return f"**{esc(first.rstrip(':'))}:**\n\n{quoted}\n"
     if kind == "alarm":
         return f"**Alarm rang:** {esc(content)}\n"
     if kind == "error":

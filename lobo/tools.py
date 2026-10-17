@@ -18,6 +18,7 @@ Tools so far:
   write_file   /
   set_alarm    leave a message for a future wake-up (see alarms.py)
   cancel_alarm
+  message_owner write to the owner (see inbox.py)
 
 The workspace is the first time Lobo can touch the disk, so every path it
 gives goes through _resolve() below, which is the whole sandbox. Its job:
@@ -31,7 +32,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from lobo import alarms
+from lobo import alarms, inbox
 from lobo.memory import Memory
 
 # Long log entries (old notes, long thoughts) get cut to this in results,
@@ -182,6 +183,15 @@ def cancel_alarm(memory: Memory, id: int) -> str:
         raise ToolError(str(e)) from None
 
 
+# --- writing to the owner (the logic lives in inbox.py) ------------------
+
+def message_owner(memory: Memory, text: str) -> str:
+    try:
+        return inbox.lobo_sends(memory, text)
+    except ValueError as e:
+        raise ToolError(str(e)) from None
+
+
 # name -> (function, description shown to the model)
 TOOLS = {
     "recall": (
@@ -218,6 +228,11 @@ TOOLS = {
     "cancel_alarm": (
         cancel_alarm,
         'Cancel a pending alarm. Args: {"id": <alarm number>}',
+    ),
+    "message_owner": (
+        message_owner,
+        'Send a message to your owner. They read it whenever they next check; '
+        'there is no set reply time. Args: {"text": "<message>"}',
     ),
 }
 
