@@ -70,6 +70,22 @@ To finish this wake-up:
   "next_wake_minutes": <integer>}}"""
 
 
+def parse_reply(text: str) -> tuple[dict, str]:
+    """Read the model's reply as one JSON object. Returns (object, leftover).
+
+    JSON mode guarantees valid JSON, but now and then the model writes two
+    objects back to back (a tool request, then the final answer it expects to
+    give afterwards). The heartbeat goes one step at a time, so it takes the
+    first and hands back the rest as leftover text instead of failing the
+    whole wake-up.
+    """
+    text = text.strip()
+    decision, end = json.JSONDecoder().raw_decode(text)
+    if not isinstance(decision, dict):
+        raise ValueError(f"reply was a JSON {type(decision).__name__}, not an object")
+    return decision, text[end:].strip()
+
+
 def beat(memory: Memory, client: ModelClient) -> int:
     """Run one wake-up. Returns how many minutes to sleep afterwards."""
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -100,7 +116,10 @@ def beat(memory: Memory, client: ModelClient) -> int:
                 # Kept for you to read; Lobo's page only shows the header.
                 memory.record("reasoning",
                               f"Reasoned ({len(reply.reasoning)} chars).\n{reply.reasoning}")
-            decision = json.loads(reply.text)
+            decision, extra = parse_reply(reply.text)
+            if extra:
+                memory.record("error", "Reply held more than one JSON object; used the first "
+                              f"and ignored the rest: {extra[:500]}")
             memory.record("thought", str(decision.get("thought", "")).strip() or "(empty)")
 
             if "tool" not in decision:
@@ -134,8 +153,10 @@ def beat(memory: Memory, client: ModelClient) -> int:
                           f"defaulted to {RETRY_MINUTES}. Reply was: {reply.text[:500]}")
         minutes = int(decision.get("next_wake_minutes", RETRY_MINUTES))
     except (ModelError, json.JSONDecodeError, TypeError, ValueError, AttributeError) as e:
-        # A failed beat shouldn't kill Lobo. Log it and try again later.
-        memory.record("error", f"Beat failed: {type(e).__name__}: {e}")
+        # A failed beat shouldn't kill Lobo. Log it and try again later. If
+        # the reply itself was the problem, keep it: it may hold real words.
+        detail = f" Reply was: {reply.text[:2000]}" if isinstance(e, json.JSONDecodeError) else ""
+        memory.record("error", f"Beat failed: {type(e).__name__}: {e}.{detail}")
         return RETRY_MINUTES
 
     if isinstance(notes, str):
