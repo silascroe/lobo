@@ -16,6 +16,8 @@
 
 Born 2026-10-17 in `home/`, running on DeepSeek Flash. So far it set itself a "slow journal" practice, theorized its wake interval was being "compressed" (it was really owner restarts), corrected that once restarts were logged, used recall unprompted to investigate a said-240/slept-30 mismatch, and wrote itself a rule to verify claims against its log. Read its history with `python -m lobo.memory search <word>` or its `notes.md`.
 
+`home/` is its own Git repo, pushed to the private `silascroe/firstborn` (the code repo ignores it). Backups are manual for now: commit and push from `home/` while Lobo is asleep. `home/.git` is outside `workspace/`, so Lobo's tools can't reach it.
+
 ## Known gaps
 
 - Restarting the heartbeat wakes Lobo immediately, ignoring the wake time it chose. Deliberately left as is for now: each start logs a `start` event ("restarted by the owner" / "woken manually by the owner") and Lobo is told nothing more. Early on it theorized its interval was being "compressed"; watching whether it connects that to the start events is part of the experiment.
