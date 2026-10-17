@@ -69,6 +69,10 @@ That installs a launchd agent (macOS's version of a scheduled task) that starts 
 - `python -m lobo.model "prompt"` — send one prompt through the model client and print the reply plus token usage.
 - `python -m lobo.memory` — print what Lobo would see of its memory. `python -m lobo.memory search <text>` searches the full log.
 
+## License
+
+MIT. Fork it, break it, give it a different life.
+
 ## Docs
 
 - [docs/STATUS.md](docs/STATUS.md) — what exists, what's next.

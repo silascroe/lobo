@@ -8,6 +8,8 @@ Lobo lives only while your Mac is on, awake, and you're logged in. Close the lid
 
 ## 1. Get the files
 
+(Using Codex? Skip to "Using Codex for this" at the bottom.)
+
 On this repo's GitHub page, click the green **Code** button, then **Download ZIP**. Unzip it (double-click), rename the folder from `lobo-main` to `lobo`, and move it into your home folder (the one with your name, which has Desktop, Documents and Downloads in it).
 
 Don't leave it in Downloads, Desktop or Documents: macOS blocks background programs from those folders, and Lobo would silently fail to start.
@@ -68,8 +70,22 @@ Before any of these, open a fresh Terminal and type `cd ~/lobo` first.
 
 If you change your key, run step 4 and step 6 again.
 
+## Updating
+
+If you got the files with Git (the Codex route below does), updating keeps `home` safe automatically, since Git doesn't track it:
+
+```bash
+cd ~/lobo
+git pull
+launchctl kickstart -k gui/$(id -u)/lobo.heartbeat
+```
+
+The last line restarts Lobo on the new code (it wakes up right away). If you downloaded a ZIP instead, replace everything except `home`, then run that last line.
+
 ## Using Codex for this
 
-Codex can help, but keep the key out of it. Paste this to Codex:
+Codex can do most of it, but the key should never pass through it. Give Codex this:
 
-> I'm installing a Python program called Lobo on my Mac by following docs/INSTALL-mac.md in the folder ~/lobo. Read that file and walk me through it one step at a time, waiting for me to say each step worked. Don't change any files in ~/lobo. Never ask me to paste my API key to you; I'll type it into Terminal myself.
+> Install Lobo on my Mac: https://github.com/silascroe/lobo. Clone it with git into ~/lobo (not Desktop, Documents or Downloads) and follow docs/INSTALL-mac.md. Do steps 1 to 3 yourself where you can, and tell me if I need to click through an installer. Don't run steps 4 to 6 yourself: they need my API key, which I won't paste to you. Instead, give me the exact commands to type into my own Terminal, then help me read any errors. Don't edit any files in ~/lobo.
+
+Later, "update Lobo following the Updating section of ~/lobo/docs/INSTALL-mac.md" is all Codex needs.
