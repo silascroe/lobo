@@ -29,6 +29,12 @@ from lobo import tools
 from lobo.memory import DEFAULT_HOME, NOTES_CHAR_LIMIT, Memory
 from lobo.model import ModelClient, ModelError
 
+try:
+    import msvcrt  # Windows
+except ImportError:
+    msvcrt = None
+    import fcntl
+
 # Lobo picks its own next wake-up, clamped to this range.
 MIN_WAKE_MINUTES = 10
 MAX_WAKE_MINUTES = 24 * 60
@@ -142,6 +148,42 @@ def beat(memory: Memory, client: ModelClient) -> int:
     return clamped
 
 
+def acquire_lock(home: Path):
+    """Claim the right to run the heartbeat for this home.
+
+    Two heartbeats on one home would both wake Lobo and both write to its
+    memory. The first one to start holds an OS-level lock on a file in the
+    home; any later one finds it taken and gives up. Returns the open lock
+    file (keep it open as long as you run), or None if someone else has it.
+    The OS releases the lock when the process dies, even if it crashes, so a
+    stale lock can't lock Lobo out.
+    """
+    home.mkdir(parents=True, exist_ok=True)
+    f = open(home / "heartbeat.lock", "a+b")
+    try:
+        if msvcrt:
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None
+    return f
+
+
+def sleep_until(wake_at: float) -> None:
+    """Sleep until a wall-clock time, in short chunks, checking the clock.
+
+    One long time.sleep can drift when the PC itself goes to sleep. Checking
+    the real time between short sleeps means that when the PC wakes up and
+    Lobo's time has passed, Lobo wakes right away instead of finishing a
+    stale countdown.
+    """
+    while (remaining := wake_at - time.time()) > 0:
+        time.sleep(min(remaining, 30))
+
+
 def show_beat(memory: Memory, since_id: int) -> None:
     """Print the events from the latest beat, so you can watch it live."""
     for e in memory.recent(50):
@@ -160,10 +202,27 @@ def main() -> None:
     parser.add_argument("--home", type=Path, default=DEFAULT_HOME,
                         help="memory folder (a different home is a different Lobo)")
     parser.add_argument("--backend", default="deepseek")
+    parser.add_argument("--log", action="store_true",
+                        help="write output to <home>/heartbeat.log (for running hidden)")
+    parser.add_argument("--scheduled", action="store_true",
+                        help="started by Windows Task Scheduler (changes the start message)")
     args = parser.parse_args()
-    # Lobo may write text the console can't display (some Windows consoles
-    # are not UTF-8). Printing it should never crash the heartbeat.
-    sys.stdout.reconfigure(errors="replace")
+    if args.log:
+        # Run hidden (pythonw) there is no console to print to, so output
+        # and any crash traceback go to a file instead.
+        args.home.mkdir(parents=True, exist_ok=True)
+        sys.stdout = sys.stderr = open(args.home / "heartbeat.log", "a",
+                                       encoding="utf-8", errors="replace", buffering=1)
+    else:
+        # Lobo may write text the console can't display (some Windows consoles
+        # are not UTF-8). Printing it should never crash the heartbeat.
+        sys.stdout.reconfigure(errors="replace")
+
+    lock = acquire_lock(args.home)
+    if lock is None:
+        print(f"[{datetime.now():%Y-%m-%d %H:%M}] Another heartbeat is already running "
+              f"for {args.home}. Exiting.")
+        sys.exit(1)
 
     memory = Memory(args.home)
     client = ModelClient.from_backend(args.backend)
@@ -171,6 +230,9 @@ def main() -> None:
     # Say so in its log, as a plain fact, and let it draw its own conclusions.
     if args.once:
         memory.record("start", "Woken manually by the owner.")
+    elif args.scheduled:
+        memory.record("start", "Heartbeat started automatically by Windows Task Scheduler; "
+                               "woke immediately.")
     else:
         memory.record("start", "Heartbeat restarted by the owner; woke immediately.")
     try:
@@ -180,14 +242,16 @@ def main() -> None:
             show_beat(memory, before)
             if args.once:
                 break
-            wake_at = datetime.fromtimestamp(time.time() + minutes * 60)
-            print(f"--- next beat at {wake_at:%H:%M} local. Ctrl+C to stop. ---\n")
-            time.sleep(minutes * 60)
+            wake_at = time.time() + minutes * 60
+            print(f"--- next beat at {datetime.fromtimestamp(wake_at):%H:%M} local. "
+                  "Ctrl+C to stop. ---\n")
+            sleep_until(wake_at)
     except KeyboardInterrupt:
         memory.record("stopped", "Heartbeat stopped by the owner.")
         print("\nStopped.")
     finally:
         memory.close()
+        lock.close()
 
 
 if __name__ == "__main__":

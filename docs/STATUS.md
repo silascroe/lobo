@@ -12,14 +12,20 @@
 
 5. **Workspace file tools** — `list_files`, `read_file`, `write_file` in `tools.py`, confined to `home/workspace/`. Every path goes through `_resolve()`: rejects colons (drives, `C:foo`, alternate data streams), absolute and UNC paths, null bytes, and Windows reserved names, then resolves the path (collapsing `..`, following symlinks/junctions) and refuses anything not under the workspace. Limits: 8,000 chars per read shown, 50,000 per write, 10 MB total. Tested against 99 escape attempts including a planted junction to an outside folder (symlinks untested: they need Developer Mode on this machine; resolve() follows them the same way). Every write's full content is kept in the log's `tool` event.
 
+6. **Unattended running** — `scripts/install-task.ps1` registers a Windows scheduled task ("Lobo heartbeat") that starts the heartbeat hidden (`pythonw`) at login, no admin needed. Supporting edits to `heartbeat.py`: an OS-level lock file so only one heartbeat runs per home (a second exits; the lock vanishes with a crashed process); `--log` sends output and crash tracebacks to `home/heartbeat.log`; sleeping is done in 30-second chunks against the wall clock, so if the PC sleeps, Lobo wakes as soon as it resumes past its chosen time; `--scheduled` makes the start event read "started automatically by Windows Task Scheduler". Tested the lock across real processes (including a killed holder), the clock-jump sleep with a fake clock, and the log redirect.
+
 ## The live Lobo
 
 Born 2026-10-17 in `home/`, running on DeepSeek Flash. So far it set itself a "slow journal" practice, theorized its wake interval was being "compressed" (it was really owner restarts), corrected that once restarts were logged, used recall unprompted to investigate a said-240/slept-30 mismatch, and wrote itself a rule to verify claims against its log. Read its history with `python -m lobo.memory search <word>` or its `notes.md`.
 
 `home/` is its own Git repo, pushed to the private `silascroe/firstborn` (the code repo ignores it). Backups are manual for now: commit and push from `home/` while Lobo is asleep. `home/.git` is outside `workspace/`, so Lobo's tools can't reach it.
 
+Since 2026-10-17 it runs under Task Scheduler rather than inside a dev session, so it keeps living with the app closed. Only logging out or shutting down stops it; it restarts (and wakes immediately) at next login.
+
 ## Known gaps
 
+- The task runs only while you are logged in. Surviving a reboot with nobody logged in would need "run whether logged on or not", which stores your Windows password with the task; not worth it for now.
+- A PC that sleeps overnight means Lobo wakes late, not on time. It isn't told why beyond the timestamps.
 - Restarting the heartbeat wakes Lobo immediately, ignoring the wake time it chose. Deliberately left as is for now: each start logs a `start` event ("restarted by the owner" / "woken manually by the owner") and Lobo is told nothing more. Early on it theorized its interval was being "compressed"; watching whether it connects that to the start events is part of the experiment.
 
 ## Next
