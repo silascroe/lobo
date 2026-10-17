@@ -79,12 +79,14 @@ class Memory:
         ).fetchall()
         return [Event(*row) for row in reversed(rows)]
 
-    def search(self, text: str, limit: int = 20) -> list[Event]:
+    def search(self, text: str, limit: int = 20,
+               exclude_kinds: tuple[str, ...] = ()) -> list[Event]:
         """Events whose content contains `text` (case-insensitive), newest first."""
+        skip = ",".join("?" * len(exclude_kinds)) or "''"
         rows = self.db.execute(
             "SELECT id, time, kind, content FROM events "
-            "WHERE content LIKE ? ORDER BY id DESC LIMIT ?",
-            (f"%{text}%", limit),
+            f"WHERE content LIKE ? AND kind NOT IN ({skip}) ORDER BY id DESC LIMIT ?",
+            (f"%{text}%", *exclude_kinds, limit),
         ).fetchall()
         return [Event(*row) for row in rows]
 
@@ -113,11 +115,12 @@ class Memory:
         """Notes plus recent events, formatted as text for a prompt."""
         notes = self.read_notes().strip() or "(no notes yet)"
         events = self.recent(recent_limit)
-        # Old notes versions are kept in the log for history, but the model
-        # only sees their one-line header; the current notes are shown above.
+        # Old notes versions and tool results are kept in full in the log,
+        # but the model only sees their one-line header here, so the page
+        # stays small. (The full text is still reachable by searching.)
         log = "\n".join(
             f"[{e.time}] {e.kind}: "
-            + (e.content.splitlines()[0] if e.kind == "notes" else e.content)
+            + (e.content.splitlines()[0] if e.kind in ("notes", "tool") else e.content)
             for e in events
         )
         return f"## Your notes\n{notes}\n\n## Recent events\n{log or '(nothing yet)'}"
