@@ -11,11 +11,23 @@ tool-using agent works, Codex and Claude Code included. Theirs use a fancier
 built-in API for the asking part; Lobo uses plain JSON so you can read every
 step in its log.
 
-First tool: recall, a search over Lobo's own permanent event log. Read-only,
-touches nothing but its own memory.
+Tools so far:
+  recall       search Lobo's own permanent event log (read-only)
+  list_files   \
+  read_file     > Lobo's workspace: a folder of its own, and nothing else
+  write_file   /
+
+The workspace is the first time Lobo can touch the disk, so every path it
+gives goes through _resolve() below, which is the whole sandbox. Its job:
+whatever string Lobo sends, the file actually touched must be inside
+home/workspace/. This is a software fence, not real isolation; it's enough
+for text files, not for a shell (that needs a container or VM).
 """
 
 from __future__ import annotations
+
+import os
+from pathlib import Path
 
 from lobo.memory import Memory
 
@@ -23,6 +35,19 @@ from lobo.memory import Memory
 # so one search can't flood the model's page.
 RESULT_CHAR_LIMIT = 500
 
+# Workspace limits: keep any one read from flooding the page, any one write
+# from being enormous, and the folder as a whole from filling the disk.
+READ_CHAR_LIMIT = 8_000
+WRITE_CHAR_LIMIT = 50_000
+WORKSPACE_BYTE_LIMIT = 10 * 1024 * 1024
+LIST_ENTRY_LIMIT = 200
+
+
+class ToolError(Exception):
+    """A tool refused or failed. The message goes back to Lobo as text."""
+
+
+# --- recall --------------------------------------------------------------
 
 def recall(memory: Memory, query: str, limit: int = 10) -> str:
     query = str(query).strip()
@@ -42,6 +67,102 @@ def recall(memory: Memory, query: str, limit: int = 10) -> str:
     return "\n".join(lines)
 
 
+# --- the workspace fence -------------------------------------------------
+
+def workspace_root(memory: Memory) -> Path:
+    root = (memory.home / "workspace").resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _resolve(memory: Memory, path: str) -> Path:
+    """Turn a path from Lobo into a real path inside its workspace, or refuse.
+
+    The core check is the last one: resolve() turns the path into its true
+    absolute form (collapsing "..", following any symlinks or Windows
+    junctions), and then we confirm the result still sits under the
+    workspace. The earlier checks reject things Windows treats specially, so
+    the refusals come with clear reasons instead of odd behavior.
+    """
+    path = str(path).strip()
+    if "\x00" in path:
+        raise ToolError("Paths can't contain null characters.")
+    # A colon means a drive ("C:\..."), a drive-relative path ("C:foo"), or an
+    # NTFS alternate data stream ("file.txt:hidden"). None belong here.
+    if ":" in path:
+        raise ToolError("Use a relative path inside your workspace (no drive letters or colons).")
+    if path.startswith(("/", "\\")):
+        raise ToolError("Use a relative path inside your workspace, not an absolute one.")
+    # Windows device names (CON, NUL, COM1, "nul.txt"...) open devices, not files.
+    isreserved = getattr(os.path, "isreserved", None)
+    if isreserved and path not in ("", ".") and isreserved(path):
+        raise ToolError(f"{path!r} is a reserved name on Windows.")
+
+    root = workspace_root(memory)
+    target = (root / path).resolve()
+    if not target.is_relative_to(root):
+        raise ToolError(f"{path!r} is outside your workspace.")
+    return target
+
+
+def _relative(memory: Memory, target: Path) -> str:
+    rel = target.relative_to(workspace_root(memory)).as_posix()
+    return rel if rel != "." else "(workspace)"
+
+
+def _workspace_bytes(root: Path) -> int:
+    return sum(p.stat().st_size for p in root.rglob("*") if p.is_file())
+
+
+# --- workspace tools -----------------------------------------------------
+
+def list_files(memory: Memory, path: str = ".") -> str:
+    target = _resolve(memory, path)
+    if not target.exists():
+        raise ToolError(f"{path!r} doesn't exist.")
+    if not target.is_dir():
+        raise ToolError(f"{path!r} is a file, not a folder.")
+    entries = sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+    if not entries:
+        return f"{_relative(memory, target)} is empty."
+    lines = [f"Contents of {_relative(memory, target)}:"]
+    for p in entries[:LIST_ENTRY_LIMIT]:
+        lines.append(f"  {p.name}/" if p.is_dir() else f"  {p.name}  ({p.stat().st_size} bytes)")
+    if len(entries) > LIST_ENTRY_LIMIT:
+        lines.append(f"  ...and {len(entries) - LIST_ENTRY_LIMIT} more")
+    return "\n".join(lines)
+
+
+def read_file(memory: Memory, path: str) -> str:
+    target = _resolve(memory, path)
+    if not target.is_file():
+        raise ToolError(f"{path!r} isn't a file." if target.exists() else f"{path!r} doesn't exist.")
+    text = target.read_text(encoding="utf-8", errors="replace")
+    header = f"{_relative(memory, target)} ({len(text)} chars):"
+    if len(text) > READ_CHAR_LIMIT:
+        return f"{header}\n{text[:READ_CHAR_LIMIT]}\n[...truncated; showing first {READ_CHAR_LIMIT}]"
+    return f"{header}\n{text}"
+
+
+def write_file(memory: Memory, path: str, content: str) -> str:
+    if not isinstance(content, str):
+        raise ToolError("content must be a string.")
+    if len(content) > WRITE_CHAR_LIMIT:
+        raise ToolError(f"content is {len(content)} chars; the limit per write is {WRITE_CHAR_LIMIT}.")
+    target = _resolve(memory, path)
+    root = workspace_root(memory)
+    if target == root or target.is_dir():
+        raise ToolError(f"{path!r} is a folder; give a file path.")
+    existing = target.stat().st_size if target.exists() else 0
+    new_total = _workspace_bytes(root) - existing + len(content.encode("utf-8"))
+    if new_total > WORKSPACE_BYTE_LIMIT:
+        raise ToolError(f"That would put your workspace over {WORKSPACE_BYTE_LIMIT} bytes.")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    verb = "Overwrote" if target.exists() else "Created"
+    target.write_text(content, encoding="utf-8")
+    return f"{verb} {_relative(memory, target)} ({len(content)} chars)."
+
+
 # name -> (function, description shown to the model)
 TOOLS = {
     "recall": (
@@ -50,6 +171,22 @@ TOOLS = {
         'version, not just the recent ones you see). Matches text exactly, '
         'case-insensitive, so search one distinctive word or short phrase. '
         'Args: {"query": "<text>"}',
+    ),
+    "list_files": (
+        list_files,
+        'List a folder in your workspace, a directory of your own that persists '
+        'between wake-ups. Paths are relative to it; "." is its top. '
+        'Args: {"path": "<folder>"} (optional)',
+    ),
+    "read_file": (
+        read_file,
+        'Read a text file in your workspace. Args: {"path": "<file>"}',
+    ),
+    "write_file": (
+        write_file,
+        'Create or overwrite a text file in your workspace (folders are created '
+        f'as needed). Max {WRITE_CHAR_LIMIT} chars per write. '
+        'Args: {"path": "<file>", "content": "<text>"}',
     ),
 }
 
@@ -69,5 +206,9 @@ def run(memory: Memory, name: str, args: dict) -> str:
     function, _ = TOOLS[name]
     try:
         return function(memory, **args)
+    except ToolError as e:
+        return f"{name} refused: {e}"
     except (TypeError, ValueError) as e:
         return f"Bad args for {name}: {e}"
+    except OSError as e:
+        return f"{name} failed: {e.strerror or e}"

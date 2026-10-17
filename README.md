@@ -13,8 +13,8 @@ Your PC: Lobo runtime (Python)
   ├─ model client   → DeepSeek API now; any OpenAI-compatible backend later (e.g. local llama.cpp/Ollama)
   ├─ memory         → home/notes.md (curated) + home/memory.db (raw event log)
   ├─ heartbeat      → wake, show memory, model decides, save, sleep until it chose
-  ├─ tools          → recall (search its own full log); file ops next
-  └─ workspace/     → the only part of the disk Lobo may touch (not built yet)
+  ├─ tools          → recall (search its own log), list/read/write files
+  └─ home/workspace/ → the only part of the disk Lobo's tools may touch
 ```
 
 The model is interchangeable. The runtime provides the continuity.

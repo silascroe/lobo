@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -98,7 +99,13 @@ def beat(memory: Memory, client: ModelClient) -> int:
                 result = tools.run(memory, name, args)
                 tool_calls += 1
             first_line = result.splitlines()[0] if result else ""
-            memory.record("tool", f"{name} {json.dumps(args)} -> {first_line}\n{result}")
+            # The header (all Lobo's page shows) gets a short version of the
+            # args; write_file content can be huge. The full args and result
+            # go in the body, so the log keeps every version of every file.
+            args_json = json.dumps(args, ensure_ascii=False)
+            short_args = args_json if len(args_json) <= 200 else args_json[:200] + "...}"
+            memory.record("tool", f"{name} {short_args} -> {first_line}\n"
+                                  f"args: {args_json}\n{result}")
             # The model's own request and the result both go on the page, so
             # the next call sees the whole exchange so far.
             messages.append({"role": "assistant", "content": reply.text})
@@ -154,6 +161,9 @@ def main() -> None:
                         help="memory folder (a different home is a different Lobo)")
     parser.add_argument("--backend", default="deepseek")
     args = parser.parse_args()
+    # Lobo may write text the console can't display (some Windows consoles
+    # are not UTF-8). Printing it should never crash the heartbeat.
+    sys.stdout.reconfigure(errors="replace")
 
     memory = Memory(args.home)
     client = ModelClient.from_backend(args.backend)
