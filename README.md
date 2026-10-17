@@ -16,7 +16,8 @@ Your PC: Lobo runtime (Python)
   ├─ memory         → home/notes.md (curated) + home/memory.db (raw event log)
   ├─ heartbeat      → wake, show memory, model decides, save, sleep until it chose
   │                   (started at login by a Windows scheduled task; one per home, enforced by a lock)
-  ├─ tools          → recall (search its own log), list/read/write files
+  ├─ tools          → recall (search its own log), list/read/write files, set/cancel alarms
+  ├─ alarms         → messages Lobo leaves for a future wake; the heartbeat wakes it for them
   ├─ backup         → commits and pushes home/ to a private repo every 6 hours, only between wakes
   ├─ days           → home/days/: the log rewritten as one readable Markdown file per day (for you; Lobo never sees it)
   └─ home/workspace/ → the only part of the disk Lobo's tools may touch

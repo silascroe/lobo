@@ -25,7 +25,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lobo import tools
+from lobo import alarms, tools
 from lobo.memory import DEFAULT_HOME, NOTES_CHAR_LIMIT, Memory
 from lobo.model import ModelClient, ModelError
 
@@ -73,9 +73,13 @@ def beat(memory: Memory, client: ModelClient) -> int:
     """Run one wake-up. Returns how many minutes to sleep afterwards."""
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     memory.record("wake", f"Woke at {now}.")
+    # Any alarm that's due rings now: logged as an event, so it shows up in
+    # the recent events below like everything else that happened.
+    alarms.ring_due(memory)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Current time: {now}\n\n{memory.snapshot()}"},
+        {"role": "user", "content": f"Current time: {now}\n\n{memory.snapshot()}\n\n"
+                                    f"## Your alarms\n{alarms.describe_pending(memory)}"},
     ]
 
     tokens_in = tokens_out = 0
@@ -243,7 +247,12 @@ def main() -> None:
             if args.once:
                 break
             wake_at = time.time() + minutes * 60
-            print(f"--- next beat at {datetime.fromtimestamp(wake_at):%H:%M} local. "
+            why = ""
+            alarm_at = alarms.next_due(memory)
+            if alarm_at is not None and alarm_at < wake_at:
+                # An alarm comes due before the wake Lobo chose: wake for it.
+                wake_at, why = alarm_at, " (for an alarm)"
+            print(f"--- next beat at {datetime.fromtimestamp(wake_at):%H:%M} local{why}. "
                   "Ctrl+C to stop. ---\n")
             sleep_until(wake_at)
     except KeyboardInterrupt:

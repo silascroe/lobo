@@ -66,6 +66,8 @@ def render_event(kind: str, content: str) -> str:
         return f"**{esc(first)}**\n\n" + fold("The new notes", rest)
     if kind == "sleep":
         return f"**{esc(content)}**\n"
+    if kind == "alarm":
+        return f"**Alarm rang:** {esc(content)}\n"
     if kind == "error":
         return f"> **Error:** {esc(content)}\n"
     # start, stopped, anything new: a plain italic fact

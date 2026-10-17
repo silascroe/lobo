@@ -16,6 +16,8 @@ Tools so far:
   list_files   \
   read_file     > Lobo's workspace: a folder of its own, and nothing else
   write_file   /
+  set_alarm    leave a message for a future wake-up (see alarms.py)
+  cancel_alarm
 
 The workspace is the first time Lobo can touch the disk, so every path it
 gives goes through _resolve() below, which is the whole sandbox. Its job:
@@ -29,6 +31,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from lobo import alarms
 from lobo.memory import Memory
 
 # Long log entries (old notes, long thoughts) get cut to this in results,
@@ -163,6 +166,22 @@ def write_file(memory: Memory, path: str, content: str) -> str:
     return f"{verb} {_relative(memory, target)} ({len(content)} chars)."
 
 
+# --- alarms (the logic lives in alarms.py) -------------------------------
+
+def set_alarm(memory: Memory, minutes_from_now: int, message: str) -> str:
+    try:
+        return alarms.add(memory, minutes_from_now, message)
+    except ValueError as e:
+        raise ToolError(str(e)) from None
+
+
+def cancel_alarm(memory: Memory, id: int) -> str:
+    try:
+        return alarms.cancel(memory, id)
+    except ValueError as e:
+        raise ToolError(str(e)) from None
+
+
 # name -> (function, description shown to the model)
 TOOLS = {
     "recall": (
@@ -187,6 +206,18 @@ TOOLS = {
         'Create or overwrite a text file in your workspace (folders are created '
         f'as needed). Max {WRITE_CHAR_LIMIT} chars per write. '
         'Args: {"path": "<file>", "content": "<text>"}',
+    ),
+    "set_alarm": (
+        set_alarm,
+        'Leave a message for a future wake-up. At that time you wake (even if '
+        'it is sooner than the next wake you chose) and the message appears in '
+        f'your log. {alarms.MIN_MINUTES} min to {alarms.MAX_MINUTES // 1440} days '
+        'ahead. Your pending alarms are listed every wake-up. '
+        'Args: {"minutes_from_now": <integer>, "message": "<text>"}',
+    ),
+    "cancel_alarm": (
+        cancel_alarm,
+        'Cancel a pending alarm. Args: {"id": <alarm number>}',
     ),
 }
 
