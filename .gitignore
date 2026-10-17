@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Lobo's own world: its memory database and workspace are runtime state, not source.
+workspace/
+*.sqlite3
+*.db
