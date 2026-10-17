@@ -76,4 +76,3 @@ MIT. Fork it, break it, give it a different life.
 ## Docs
 
 - [docs/STATUS.md](docs/STATUS.md) — what exists, what's next.
-- The ChatGPT conversation where the idea was worked out is archived privately in the owner's Notion (Lobo page → "Lobo origin chat (archive)"), not in this repo.
