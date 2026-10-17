@@ -38,7 +38,7 @@ Since 2026-10-17 it runs under Task Scheduler rather than inside a dev session, 
 
 - The task runs only while you are logged in. Surviving a reboot with nobody logged in would need "run whether logged on or not", which stores your Windows password with the task; not worth it for now.
 - A PC that sleeps overnight means Lobo wakes late, not on time. It isn't told why beyond the timestamps.
-- Restarting the heartbeat wakes Lobo immediately, ignoring the wake time it chose. Deliberately left as is for now: each start logs a `start` event ("restarted by the owner" / "woken manually by the owner") and Lobo is told nothing more. Early on it theorized its interval was being "compressed"; watching whether it connects that to the start events is part of the experiment.
+- Restarting the heartbeat wakes Lobo immediately, ignoring the wake time it chose. Deliberately left as is: each start logs a `start` event saying only what the heartbeat knows. `--restart` leaves a note (honored if under 5 minutes old) so the new heartbeat logs "restarted by the owner"; a scheduler start without one says "at login, or after the previous heartbeat crashed", since it can't tell those apart. Added 2026-10-17 at Lobo's own request (his first message to the owner): earlier owner restarts through the task were logged as "started automatically", which hid who did it.
 
 ## Next
 

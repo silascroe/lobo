@@ -77,7 +77,7 @@ If you got the files with Git (the Codex route below does), updating keeps `home
 ```bash
 cd ~/lobo
 git pull
-launchctl kickstart -k gui/$(id -u)/lobo.heartbeat
+python3 -m lobo.heartbeat --restart
 ```
 
 The last line restarts Lobo on the new code (it wakes up right away). If you downloaded a ZIP instead, replace everything except `home`, then run that last line.

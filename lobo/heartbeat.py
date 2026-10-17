@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -42,6 +44,13 @@ MAX_WAKE_MINUTES = 24 * 60
 RETRY_MINUTES = 30
 # Most tool calls allowed in one wake-up, so Lobo can't loop forever.
 MAX_TOOL_CALLS = 5
+# --restart leaves this note in the home so the new heartbeat can say who
+# restarted it. Only a fresh note counts, in case a restart never happened.
+RESTART_NOTE = "restart.note"
+RESTART_NOTE_MAX_AGE = 5 * 60
+# Names the install scripts give the unattended heartbeat.
+WINDOWS_TASK = "Lobo heartbeat"
+MAC_LABEL = "lobo.heartbeat"
 
 SYSTEM_PROMPT = f"""You are Lobo, a persistent agent.
 
@@ -71,19 +80,49 @@ To finish this wake-up:
 
 
 def parse_reply(text: str) -> tuple[dict, str]:
-    """Read the model's reply as one JSON object. Returns (object, leftover).
+    """Read the model's reply as one JSON object. Returns (object, dropped text).
 
-    JSON mode guarantees valid JSON, but now and then the model writes two
-    objects back to back (a tool request, then the final answer it expects to
-    give afterwards). The heartbeat goes one step at a time, so it takes the
-    first and hands back the rest as leftover text instead of failing the
-    whole wake-up.
+    JSON mode guarantees valid JSON, but now and then the model writes
+    several objects back to back, in one of two shapes:
+      - a tool request, then the final answer it expects to give afterwards.
+        The heartbeat goes one step at a time, so the tool request is used
+        and the rest is dropped (Lobo answers again after the result).
+      - one answer split in pieces ({"thought": ...} {"notes": ...,
+        "next_wake_minutes": ...}). Those are merged into one.
+    Anything dropped comes back as text, so it can be logged, not lost.
     """
     text = text.strip()
-    decision, end = json.JSONDecoder().raw_decode(text)
-    if not isinstance(decision, dict):
-        raise ValueError(f"reply was a JSON {type(decision).__name__}, not an object")
-    return decision, text[end:].strip()
+    decoder = json.JSONDecoder()
+    objects, position = [], 0
+    while position < len(text):
+        try:
+            value, position = decoder.raw_decode(text, position)
+        except json.JSONDecodeError:
+            if not objects:
+                raise
+            return _combine(objects, text[position:].strip())
+        if not isinstance(value, dict):
+            if not objects:
+                raise ValueError(f"reply was a JSON {type(value).__name__}, not an object")
+            return _combine(objects, text[position:].strip())
+        objects.append(value)
+        while position < len(text) and text[position] in " \t\r\n":
+            position += 1
+    return _combine(objects, "")
+
+
+def _combine(objects: list[dict], rest: str) -> tuple[dict, str]:
+    if "tool" in objects[0]:
+        dropped = [json.dumps(o, ensure_ascii=False) for o in objects[1:]] + ([rest] if rest else [])
+        return objects[0], " ".join(dropped)
+    merged, conflicts = {}, []
+    for o in objects:
+        for key, value in o.items():
+            if key in merged and merged[key] != value:
+                conflicts.append(json.dumps({key: value}, ensure_ascii=False))
+            else:
+                merged.setdefault(key, value)
+    return merged, " ".join(conflicts + ([rest] if rest else []))
 
 
 def beat(memory: Memory, client: ModelClient) -> int:
@@ -116,10 +155,10 @@ def beat(memory: Memory, client: ModelClient) -> int:
                 # Kept for you to read; Lobo's page only shows the header.
                 memory.record("reasoning",
                               f"Reasoned ({len(reply.reasoning)} chars).\n{reply.reasoning}")
-            decision, extra = parse_reply(reply.text)
-            if extra:
-                memory.record("error", "Reply held more than one JSON object; used the first "
-                              f"and ignored the rest: {extra[:500]}")
+            decision, dropped = parse_reply(reply.text)
+            if dropped:
+                memory.record("error", "Reply held more than one JSON object; part of it was "
+                              f"not used: {dropped[:500]}")
             memory.record("thought", str(decision.get("thought", "")).strip() or "(empty)")
 
             if "tool" not in decision:
@@ -216,6 +255,64 @@ def sleep_until(wake_at: float, interrupt=None) -> bool:
     return False
 
 
+def start_message(home: Path, once: bool, scheduled: bool) -> str:
+    """What Lobo's log says about why the heartbeat just started.
+
+    Plain facts, and only ones the heartbeat actually knows. Started by the
+    scheduler with no restart note, it can't tell a login from a restart
+    after a crash, so it says both.
+    """
+    note = home / RESTART_NOTE
+    restarted = False
+    if note.exists():
+        restarted = time.time() - note.stat().st_mtime < RESTART_NOTE_MAX_AGE
+        note.unlink()
+    if once:
+        return "Woken manually by the owner."
+    if restarted or not scheduled:
+        return "Heartbeat restarted by the owner; woke immediately."
+    scheduler = "Windows Task Scheduler" if sys.platform == "win32" else "launchd"
+    return (f"Heartbeat started automatically by {scheduler} (at login, or after the "
+            "previous heartbeat crashed); woke immediately.")
+
+
+def restart(home: Path) -> None:
+    """Restart the unattended heartbeat so its log says the owner did it.
+
+    Stops the running one, waits until it's really gone (its lock comes
+    free), then starts it again through the same scheduler that runs it.
+    """
+    def run(*command: str) -> subprocess.CompletedProcess:
+        return subprocess.run(command, capture_output=True, text=True)
+
+    if sys.platform == "win32":
+        stop, start = ["schtasks", "/End", "/TN", WINDOWS_TASK], ["schtasks", "/Run", "/TN", WINDOWS_TASK]
+    elif sys.platform == "darwin":
+        target = f"gui/{os.getuid()}"
+        plist = Path.home() / "Library" / "LaunchAgents" / f"{MAC_LABEL}.plist"
+        stop, start = ["launchctl", "bootout", f"{target}/{MAC_LABEL}"], ["launchctl", "bootstrap", target, str(plist)]
+    else:
+        sys.exit("--restart works with the Windows task or the Mac launchd agent only.")
+
+    home.mkdir(parents=True, exist_ok=True)
+    (home / RESTART_NOTE).write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
+    run(*stop)   # fails harmlessly if it wasn't running
+    for _ in range(60):
+        lock = acquire_lock(home)
+        if lock:
+            lock.close()
+            break
+        time.sleep(0.5)
+    else:
+        (home / RESTART_NOTE).unlink(missing_ok=True)
+        sys.exit("The old heartbeat didn't stop within 30 seconds; nothing restarted.")
+    result = run(*start)
+    if result.returncode:
+        (home / RESTART_NOTE).unlink(missing_ok=True)
+        sys.exit(f"Couldn't start the heartbeat (is it installed?): {(result.stderr or result.stdout).strip()}")
+    print("Restarted. Lobo wakes now, and his log says the owner restarted him.")
+
+
 def show_beat(memory: Memory, since_id: int) -> None:
     """Print the events from the latest beat, so you can watch it live."""
     for e in memory.recent(50):
@@ -238,7 +335,12 @@ def main() -> None:
                         help="write output to <home>/heartbeat.log (for running hidden)")
     parser.add_argument("--scheduled", action="store_true",
                         help="started by Task Scheduler / launchd (changes the start message)")
+    parser.add_argument("--restart", action="store_true",
+                        help="restart the unattended heartbeat, logged as an owner restart")
     args = parser.parse_args()
+    if args.restart:
+        restart(args.home)
+        return
     if args.log:
         # Run hidden (pythonw) there is no console to print to, so output
         # and any crash traceback go to a file instead.
@@ -260,14 +362,7 @@ def main() -> None:
     client = ModelClient.from_backend(args.backend)
     # Starting the heartbeat wakes Lobo right away, whatever time it chose.
     # Say so in its log, as a plain fact, and let it draw its own conclusions.
-    if args.once:
-        memory.record("start", "Woken manually by the owner.")
-    elif args.scheduled:
-        scheduler = "Windows Task Scheduler" if sys.platform == "win32" else "launchd"
-        memory.record("start", f"Heartbeat started automatically by {scheduler}; "
-                               "woke immediately.")
-    else:
-        memory.record("start", "Heartbeat restarted by the owner; woke immediately.")
+    memory.record("start", start_message(args.home, args.once, args.scheduled))
     try:
         while True:
             before = last_id(memory)

@@ -62,7 +62,8 @@ That installs a launchd agent (macOS's version of a scheduled task) that starts 
 ## Entry points
 
 - `python -m lobo.heartbeat` — run Lobo. Stays open in the terminal, printing each wake-up; Ctrl+C stops it. `--once` for a single beat. Only one heartbeat can run per home; a second one exits immediately.
-- `.\scripts\install-task.ps1` — run Lobo unattended: registers a Windows scheduled task ("Lobo heartbeat") that starts at login, hidden, logging to `home/heartbeat.log`. `-Remove` uninstalls it. Start/stop it with `Start-ScheduledTask` / `Stop-ScheduledTask "Lobo heartbeat"`.
+- `.\scripts\install-task.ps1` — run Lobo unattended: registers a Windows scheduled task ("Lobo heartbeat") that starts at login, hidden, logging to `home/heartbeat.log`. `-Remove` uninstalls it. Stop it with `Stop-ScheduledTask "Lobo heartbeat"`.
+- `python -m lobo.heartbeat --restart` — restart the unattended heartbeat (Windows task or Mac agent), e.g. to load new code. Lobo wakes immediately and his log says the owner restarted him; a plain scheduler start (login, crash recovery) is labeled as that instead.
 - `.\scripts\install-backup-task.ps1` — registers the "Lobo backup" scheduled task (every 6 hours; `-EveryHours N` to change, `-Remove` to uninstall). `python -m lobo.backup` does one backup by hand. Needs `home/` to be its own Git repo with a remote; see [docs/STATUS.md](docs/STATUS.md).
 - `python3 scripts/install_mac.py` — the Mac equivalent of both tasks (see "On a Mac" above).
 - `python -m lobo.inbox "text"` — leave Lobo a letter (it reads it at its next wake); add `--now` to knock and wake it within ~30 s. `python -m lobo.inbox` alone shows the conversation.
