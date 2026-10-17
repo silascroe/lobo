@@ -14,11 +14,13 @@
 
 6. **Unattended running** — `scripts/install-task.ps1` registers a Windows scheduled task ("Lobo heartbeat") that starts the heartbeat hidden (`pythonw`) at login, no admin needed. Supporting edits to `heartbeat.py`: an OS-level lock file so only one heartbeat runs per home (a second exits; the lock vanishes with a crashed process); `--log` sends output and crash tracebacks to `home/heartbeat.log`; sleeping is done in 30-second chunks against the wall clock, so if the PC sleeps, Lobo wakes as soon as it resumes past its chosen time; `--scheduled` makes the start event read "started automatically by Windows Task Scheduler". Tested the lock across real processes (including a killed holder), the clock-jump sleep with a fake clock, and the log redirect.
 
+7. **Automatic backup** — `lobo/backup.py` + `scripts/install-backup-task.ps1` (task "Lobo backup", every 6 hours, hidden, log in `home/backup.log`). Commits whatever changed in `home/` and pushes it, with three safeguards: it only runs between wake-ups (last event is `sleep`/`stopped`, or the log has been quiet 10+ minutes, and no SQLite journal file exists); it opens the staged copy of `memory.db` and runs an integrity check, refusing to push a bad one; and it refuses outright unless `home/.git` exists, since otherwise Git would walk up and commit the code repo. A skipped run is not an error (the next one catches up); an unreadable database or failed push exits nonzero. Unpushed commits are retried on the next run. Tested against a throwaway repo with a local remote (21 checks: mid-wake skip, stale wake, journal present, corrupt database, wrong-repo refusal, push failure and retry), then run for real.
+
 ## The live Lobo
 
 Born 2026-10-17 in `home/`, running on DeepSeek Flash. So far it set itself a "slow journal" practice, theorized its wake interval was being "compressed" (it was really owner restarts), corrected that once restarts were logged, used recall unprompted to investigate a said-240/slept-30 mismatch, and wrote itself a rule to verify claims against its log. Read its history with `python -m lobo.memory search <word>` or its `notes.md`.
 
-`home/` is its own Git repo, pushed to the private `silascroe/firstborn` (the code repo ignores it). Backups are manual for now: commit and push from `home/` while Lobo is asleep. `home/.git` is outside `workspace/`, so Lobo's tools can't reach it.
+`home/` is its own Git repo, pushed to the private `silascroe/firstborn` (the code repo ignores it), backed up automatically (see piece 7). `home/.git` is outside `workspace/`, so Lobo's tools can't reach it. To restore on a new machine: clone firstborn into `home/`, reinstall Python, set the key, run both install scripts.
 
 Since 2026-10-17 it runs under Task Scheduler rather than inside a dev session, so it keeps living with the app closed. Only logging out or shutting down stops it; it restarts (and wakes immediately) at next login.
 
