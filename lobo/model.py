@@ -37,6 +37,16 @@ BACKENDS = {
         "model": "local",
         "api_key_env": None,
     },
+    # OpenRouter resells hundreds of models behind one key. Nemo is Mistral's
+    # 12B open model, about $0.03 per million tokens each way (2026-10).
+    "openrouter": {
+        "base_url": "https://openrouter.ai/api/v1",
+        "model": "mistralai/mistral-nemo",
+        "api_key_env": "OPENROUTER_API_KEY",
+        # OpenRouter picks among several hosts per model, and not all honor
+        # every option. This makes it skip hosts that would ignore JSON mode.
+        "extra": {"provider": {"require_parameters": True}},
+    },
 }
 
 # Status codes worth retrying: rate limited, or the server had a bad moment.
@@ -60,10 +70,12 @@ class Reply:
 
 class ModelClient:
     def __init__(self, base_url: str, model: str, api_key: str | None = None,
-                 timeout: float = 120.0, max_attempts: int = 3):
+                 timeout: float = 120.0, max_attempts: int = 3, extra: dict | None = None):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key
+        # Backend-specific fields added to every request body.
+        self.extra = extra or {}
         self.timeout = timeout
         self.max_attempts = max_attempts
 
@@ -88,6 +100,7 @@ class ModelClient:
         prompt itself must still mention JSON and describe the shape wanted.
         """
         payload = {
+            **self.extra,
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
@@ -143,7 +156,7 @@ class ModelClient:
 
 
 if __name__ == "__main__":
-    # Manual check: python -m lobo.model "your prompt"   (LOBO_BACKEND=local to use a local server)
+    # Manual check: python -m lobo.model "your prompt"   (LOBO_BACKEND=local or openrouter to switch)
     prompt = " ".join(sys.argv[1:]) or "In one sentence, what are you?"
     backend = os.environ.get("LOBO_BACKEND", "deepseek")
     try:

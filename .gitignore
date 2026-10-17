@@ -5,5 +5,6 @@ __pycache__/
 
 # Lobo's own world (memory + workspace) is runtime state, not source.
 home/
+homes/
 *.sqlite3
 *.db

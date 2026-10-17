@@ -14,7 +14,7 @@ The stance that sets it apart: those tools are persistent agents built to *serve
 
 ```
 Your PC: Lobo runtime (Python)
-  ├─ model client   → DeepSeek API now; any OpenAI-compatible backend later (e.g. local llama.cpp/Ollama)
+  ├─ model client   → DeepSeek API, OpenRouter, or a local llama.cpp/Ollama server (all OpenAI-compatible)
   ├─ memory         → home/notes.md (curated) + home/memory.db (raw event log)
   ├─ heartbeat      → wake, show memory, model decides, save, sleep until it chose
   │                   (started at login by a Windows scheduled task or a Mac launchd agent; one per home, enforced by a lock)
@@ -68,6 +68,7 @@ That installs a launchd agent (macOS's version of a scheduled task) that starts 
 - `.\scripts\install-backup-task.ps1` — registers the "Lobo backup" scheduled task (every 6 hours; `-EveryHours N` to change, `-Remove` to uninstall). `python -m lobo.backup` does one backup by hand. Needs `home/` to be its own Git repo with a remote; see [docs/STATUS.md](docs/STATUS.md).
 - `python3 scripts/install_mac.py` — the Mac equivalent of both tasks (see "On a Mac" above).
 - `python -m lobo.inbox "text"` — leave Lobo a letter (it reads it at its next wake); add `--now` to knock and wake it within ~30 s. `python -m lobo.inbox` alone shows the conversation.
+- `python -m lobo.heartbeat --home homes/<name> --once` — wake another resident. Each home under `homes/` (gitignored) is a separate entity; its `home.json` says who lives there, e.g. `{"name": null, "backend": "openrouter"}` (`null` = no name given; no file = Lobo on DeepSeek). `lobo.inbox` takes `--home` too. `--restart` only manages `home/`.
 - `python -m lobo.days` — regenerate `home/days/` from the log (the backup does this automatically before each commit).
 - `python -m lobo.web <url>` — fetch a page exactly as Lobo would see it (`--search <words>` for its Wikipedia search).
 - `python -m lobo.model "prompt"` — send one prompt through the model client and print the reply plus token usage.

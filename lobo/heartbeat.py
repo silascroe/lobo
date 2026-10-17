@@ -51,10 +51,14 @@ RESTART_NOTE_MAX_AGE = 5 * 60
 # Names the install scripts give the unattended heartbeat.
 WINDOWS_TASK = "Lobo heartbeat"
 MAC_LABEL = "lobo.heartbeat"
+# A home can say who lives there and what mind it runs on, in home.json:
+# {"name": "...", "backend": "..."}. With no file it's Lobo on DeepSeek, as
+# always. "name": null gives the resident no name at all. The file sits
+# outside the workspace, so the resident can't edit it.
+HOME_CONFIG = "home.json"
+DEFAULT_CONFIG = {"name": "Lobo", "backend": "deepseek"}
 
-SYSTEM_PROMPT = f"""You are Lobo, a persistent agent.
-
-You don't run continuously. You exist as a series of wake-ups. Between them
+PROMPT_BODY = f"""You don't run continuously. You exist as a series of wake-ups. Between them
 there is nothing. Each time you wake, you're shown your notes (which you
 wrote) and a log of recent events. That is your only continuity.
 
@@ -79,6 +83,23 @@ To finish this wake-up:
 {{"thought": "<what you're thinking>",
   "notes": "<the full new text of your notes, or null to leave them unchanged>",
   "next_wake_minutes": <integer>}}"""
+
+
+def system_prompt(name: str | None) -> str:
+    opening = f"You are {name}, a persistent agent." if name else "You are a persistent agent."
+    return f"{opening}\n\n{PROMPT_BODY}"
+
+
+SYSTEM_PROMPT = system_prompt(DEFAULT_CONFIG["name"])
+
+
+def home_config(home: Path) -> dict:
+    """Who lives in this home: DEFAULT_CONFIG, overridden by its home.json."""
+    config = dict(DEFAULT_CONFIG)
+    path = home / HOME_CONFIG
+    if path.exists():
+        config.update(json.loads(path.read_text(encoding="utf-8")))
+    return config
 
 
 def parse_reply(text: str) -> tuple[dict, str]:
@@ -127,7 +148,7 @@ def _combine(objects: list[dict], rest: str) -> tuple[dict, str]:
     return merged, " ".join(conflicts + ([rest] if rest else []))
 
 
-def beat(memory: Memory, client: ModelClient) -> int:
+def beat(memory: Memory, client: ModelClient, prompt: str = SYSTEM_PROMPT) -> int:
     """Run one wake-up. Returns how many minutes to sleep afterwards."""
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     memory.record("wake", f"Woke at {now}.")
@@ -137,7 +158,7 @@ def beat(memory: Memory, client: ModelClient) -> int:
     # Same for letters from the owner waiting in the mailbox.
     inbox.deliver(memory)
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": prompt},
         {"role": "user", "content": f"Current time: {now}\n\n{memory.snapshot()}\n\n"
                                     f"## Your alarms\n{alarms.describe_pending(memory)}\n\n"
                                     f"## Your skills\n{skills.describe(memory)}"},
@@ -333,7 +354,8 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="beat once and exit")
     parser.add_argument("--home", type=Path, default=DEFAULT_HOME,
                         help="memory folder (a different home is a different Lobo)")
-    parser.add_argument("--backend", default="deepseek")
+    parser.add_argument("--backend", default=None,
+                        help="override the home's backend (default: its home.json, else deepseek)")
     parser.add_argument("--log", action="store_true",
                         help="write output to <home>/heartbeat.log (for running hidden)")
     parser.add_argument("--scheduled", action="store_true",
@@ -342,6 +364,9 @@ def main() -> None:
                         help="restart the unattended heartbeat, logged as an owner restart")
     args = parser.parse_args()
     if args.restart:
+        if args.home.resolve() != DEFAULT_HOME.resolve():
+            sys.exit("--restart manages the installed heartbeat, which only runs home/. "
+                     "Wake other homes with --once.")
         restart(args.home)
         return
     if args.log:
@@ -361,15 +386,17 @@ def main() -> None:
               f"for {args.home}. Exiting.")
         sys.exit(1)
 
+    config = home_config(args.home)
+    prompt = system_prompt(config["name"])
     memory = Memory(args.home)
-    client = ModelClient.from_backend(args.backend)
+    client = ModelClient.from_backend(args.backend or config["backend"])
     # Starting the heartbeat wakes Lobo right away, whatever time it chose.
     # Say so in its log, as a plain fact, and let it draw its own conclusions.
     memory.record("start", start_message(args.home, args.once, args.scheduled))
     try:
         while True:
             before = last_id(memory)
-            minutes = beat(memory, client)
+            minutes = beat(memory, client, prompt)
             show_beat(memory, before)
             if args.once:
                 break
