@@ -27,7 +27,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lobo import alarms, inbox, tools
+from lobo import alarms, inbox, skills, tools
 from lobo.memory import DEFAULT_HOME, NOTES_CHAR_LIMIT, Memory
 from lobo.model import ModelClient, ModelError
 
@@ -64,6 +64,8 @@ Each wake-up you can:
 {tools.describe()}
 3. Rewrite your notes. They're shown to you every wake-up and are capped at
    {NOTES_CHAR_LIMIT} characters. Use them for whatever you want to carry forward.
+   Text files in skills/ in your workspace are listed every wake-up under
+   "Your skills" by their first line; read_file shows one in full.
 4. Choose when to wake next, between {MIN_WAKE_MINUTES} and {MAX_WAKE_MINUTES} minutes from now.
 
 Nobody is giving you tasks. What you do with your wake-ups is up to you.
@@ -137,7 +139,8 @@ def beat(memory: Memory, client: ModelClient) -> int:
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"Current time: {now}\n\n{memory.snapshot()}\n\n"
-                                    f"## Your alarms\n{alarms.describe_pending(memory)}"},
+                                    f"## Your alarms\n{alarms.describe_pending(memory)}\n\n"
+                                    f"## Your skills\n{skills.describe(memory)}"},
     ]
 
     tokens_in = tokens_out = 0

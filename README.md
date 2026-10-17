@@ -21,6 +21,7 @@ Your PC: Lobo runtime (Python)
   ├─ tools          → recall (search its own log), list/read/write files, set/cancel alarms, read web pages
   ├─ web            → read-only: any public page as text, plus Wikipedia search (never your own network)
   ├─ alarms         → messages Lobo leaves for a future wake; the heartbeat wakes it for them
+  ├─ skills         → lists the know-how files Lobo keeps in workspace/skills/ (first line each wake)
   ├─ inbox          → letters between the owner and Lobo (read at next wake, or --now to knock)
   ├─ backup         → commits and pushes home/ to a private repo every 6 hours, only between wakes
   ├─ days           → home/days/: the log rewritten as one readable Markdown file per day (for you; Lobo never sees it)
