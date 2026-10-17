@@ -25,6 +25,7 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from lobo import days
 from lobo.memory import DEFAULT_HOME
 
 # A beat that crashed never logs a `sleep` event. If nothing has been logged
@@ -105,6 +106,9 @@ def backup(home: Path) -> int:
     if not safe:
         print(f"Skipping this run: {reason}. The next scheduled run will catch up.")
         return 0
+
+    # Refresh the readable day files first, so they ride along in this commit.
+    days.write_days(home)
 
     git(home, "add", "-A")
     if git(home, "status", "--porcelain").stdout.strip():
