@@ -1,6 +1,6 @@
 # Agent instructions for Lobo
 
-Read `README.md`, then `docs/STATUS.md`. For the reasoning behind the project, `docs/origin-chat.md` is the source of truth.
+Read `README.md`, then `docs/STATUS.md`. The original ChatGPT conversation behind the project lives in the owner's Notion ("Lobo origin chat (archive)", under the Lobo page); it's mostly unrelated personal chat, so only fetch it if intent is genuinely unclear.
 
 ## The one rule that matters
 

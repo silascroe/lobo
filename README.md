@@ -46,4 +46,4 @@ setx DEEPSEEK_API_KEY "sk-..."
 ## Docs
 
 - [docs/STATUS.md](docs/STATUS.md) — what exists, what's next.
-- [docs/origin-chat.md](docs/origin-chat.md) — the ChatGPT conversation where the idea was worked out. The source of truth for intent.
+- The ChatGPT conversation where the idea was worked out is archived privately in the owner's Notion (Lobo page → "Lobo origin chat (archive)"), not in this repo.
